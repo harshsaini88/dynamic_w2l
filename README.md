@@ -33,7 +33,7 @@ pip install -r requirements.txt
 4. **Lip Sync Generator:**  
    This module takes both the dynamically masked lip regions and the audio signal to generate lip-synced movements. It is an extension of the original Wav2Lip model.
 
-## RUN
+## Run
 
 ```bash
 streamlit run app.py
