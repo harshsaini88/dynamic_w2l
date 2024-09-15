@@ -237,13 +237,6 @@ parser.add_argument(
     default="Fast",
 )
 
-parser.add_argument(
-    "--face_index",
-    type=int,
-    default=0,
-    help="Index of the face to apply lip sync to (0-based)",
-)  #new argument added for custom face lipsync @harshsaini88
-
 with open(os.path.join("checkpoints", "predictor.pkl"), "rb") as f:
     predictor = pickle.load(f)
 
@@ -275,18 +268,18 @@ def do_load(checkpoint_path):
     )
     detector_model = detector.model
 
-def face_rect(images): #this function is updted for detect all face for custom maksing @harshsaini88
+def face_rect(images):
     face_batch_size = 8
     num_batches = math.ceil(len(images) / face_batch_size)
+    prev_ret = None
     for i in range(num_batches):
         batch = images[i * face_batch_size : (i + 1) * face_batch_size]
         all_faces = detector(batch)  # return faces list of all images
-        yield all_faces
-
-def select_face(faces, index): #new function is added to select face for custom maksing @harshsaini88
-    if not faces or index >= len(faces):
-        return None
-    return faces[index]
+        for faces in all_faces:
+            if faces:
+                box, landmarks, score = faces[0]
+                prev_ret = tuple(map(int, box))
+            yield prev_ret
 
 def create_tracked_mask(img, original_img):
     global kernel, last_mask, x, y, w, h  # Add last_mask to global variables
@@ -475,8 +468,8 @@ def get_smoothened_boxes(boxes, T):
             window = boxes[i : i + T]
         boxes[i] = np.mean(window, axis=0)
     return boxes
-            
-def face_detect(images,face_index, results_file="last_detected_face.pkl"):
+
+def face_detect(images, results_file="last_detected_face.pkl"):
     # If results file exists, load it and return
     if os.path.exists(results_file):
         print("Using face detection data from last input")
@@ -485,21 +478,21 @@ def face_detect(images,face_index, results_file="last_detected_face.pkl"):
 
     results = []
     pady1, pady2, padx1, padx2 = args.pads
-    
+
     tqdm_partial = partial(tqdm, position=0, leave=True)
-    for image, faces in tqdm_partial( #this loop is updated 
+    for image, (rect) in tqdm_partial(
         zip(images, face_rect(images)),
         total=len(images),
         desc="detecting face in every frame",
         ncols=100,
     ):
-        selected_face = select_face(faces, face_index)
-        if selected_face is None:
-            cv2.imwrite("temp/faulty_frame.jpg", image)
-            raise ValueError(f"Face with index {face_index} not detected in all frames.")
-
-        box, landmarks, score = selected_face
-        rect = tuple(map(int, box))
+        if rect is None:
+            cv2.imwrite(
+                "temp/faulty_frame.jpg", image
+            )  # check this frame where the face was not detected.
+            raise ValueError(
+                "Face not detected! Ensure the video contains a face in all the frames."
+            )
 
         y1 = max(0, rect[1] - pady1)
         y2 = min(image.shape[0], rect[3] + pady2)
@@ -596,21 +589,12 @@ def main():
     if os.path.isfile(args.face) and args.face.split(".")[1] in ["jpg", "png", "jpeg"]:
         args.static = True
 
-    
-
     if not os.path.isfile(args.face):
         raise ValueError("--face argument must be a valid path to video/image file")
 
     elif args.face.split(".")[1] in ["jpg", "png", "jpeg"]:
         full_frames = [cv2.imread(args.face)]
         fps = args.fps
-
-    if args.box[0] == -1: #this function is added 
-        if not args.static:
-            face_det_results = face_detect(frames, args.face_index)
-        else:
-            face_det_results = face_detect([frames[0]], args.face_index)
-  
 
     else:
         if args.fullres != 1:
